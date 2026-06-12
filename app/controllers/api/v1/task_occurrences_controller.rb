@@ -6,11 +6,25 @@ module Api
         date = parse_date!(params[:original_date])
         ensure_valid_occurrence!(date)
 
+        attrs = occurrence_params
+        if attrs.key?(:scheduled_date) && attrs[:scheduled_date].present?
+          target = parse_date!(attrs[:scheduled_date])
+          return render_conflict(target) if collision?(date, target)
+          attrs[:scheduled_date] = target
+        end
+
         exception = @task.task_exceptions.find_or_initialize_by(original_date: date)
-        exception.status = occurrence_params[:status]
+        exception.assign_attributes(attrs)
         exception.save!
 
-        render json: OccurrenceSerializer.call(resolve(date))
+        render json: OccurrenceSerializer.call(resolve(exception))
+      end
+
+      def destroy
+        date = parse_date!(params[:original_date])
+        exception = @task.task_exceptions.find_by!(original_date: date)
+        exception.destroy!
+        head :no_content
       end
 
       private
@@ -20,12 +34,12 @@ module Api
       end
 
       def occurrence_params
-        params.require(:occurrence).permit(:status)
+        params.require(:occurrence).permit(:status, :scheduled_date, :title, :description)
       end
 
       def parse_date!(value)
         Date.parse(value.to_s)
-      rescue ArgumentError
+      rescue ArgumentError, TypeError
         raise ActionController::ParameterMissing, :original_date
       end
 
@@ -36,10 +50,20 @@ module Api
         raise ArgumentError, "#{date} is not an occurrence of this task"
       end
 
-      def resolve(date)
+      def collision?(moving_original, target)
+        Occurrences::Builder.call(@task, from: target, to: target)
+                            .any? { |o| o.original_date != moving_original }
+      end
+
+      def render_conflict(target)
+        render json: { error: "An occurrence of this task already exists on #{target}" },
+               status: :conflict
+      end
+
+      def resolve(exception)
+        date = exception.effective_scheduled_date
         Occurrences::Builder.call(@task, from: date, to: date)
-                            .find { |o| o.original_date == date } ||
-          Occurrences::Builder.call(@task, from: date, to: date).first
+                            .find { |o| o.original_date == exception.original_date }
       end
     end
   end
