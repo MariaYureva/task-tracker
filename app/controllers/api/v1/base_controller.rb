@@ -8,6 +8,7 @@ module Api
       rescue_from ActionController::ParameterMissing, with: :bad_request
       rescue_from ArgumentError, with: :bad_request
       rescue_from ActiveRecord::StaleObjectError, with: :conflict
+      rescue_from ActiveRecord::RecordNotUnique, with: :conflict
 
       private
 
