@@ -7,3 +7,13 @@
     u.role = attrs[:role]
   end
 end
+
+%w[отчетность операции звонок].each do |name|
+  tag = Tag.find_or_initialize_by(name: name)
+  if tag.persisted?
+    tag.update_column(:system, true) unless tag.system?
+  else
+    tag.system = true
+    tag.save!
+  end
+end

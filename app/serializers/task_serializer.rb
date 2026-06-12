@@ -9,7 +9,8 @@ class TaskSerializer
       starts_on: task.starts_on,
       lock_version: task.lock_version,
       created_at: task.created_at,
-      updated_at: task.updated_at
+      updated_at: task.updated_at,
+      tags: task.tags.order(:name).map { |tag| TagSerializer.call(tag) }
     }
   end
 end
