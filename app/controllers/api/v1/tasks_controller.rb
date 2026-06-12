@@ -26,10 +26,25 @@ module Api
       end
 
       def update
-        @task.assign_attributes(task_params)
-        sync_recurrence_dates(@task)
-        @task.save!
-        render json: TaskSerializer.call(@task)
+        scope = params[:scope].presence || "all"
+
+        if scope == "all"
+          @task.assign_attributes(task_params)
+          sync_recurrence_dates(@task)
+          @task.save!
+          return render json: TaskSerializer.call(@task)
+        end
+
+        result = Tasks::SeriesEditor.call(
+          task: @task, scope: scope,
+          attributes: task_params.to_h.symbolize_keys, date: params[:date]
+        )
+
+        if result.kind == :occurrence
+          render json: OccurrenceSerializer.call(result.payload)
+        else
+          render json: TaskSerializer.call(result.payload), status: status_for(scope)
+        end
       end
 
       def destroy
@@ -43,6 +58,10 @@ module Api
       end
 
       private
+
+      def status_for(scope)
+        scope == "this_and_future" ? :created : :ok
+      end
 
       def set_task
         @task = current_user.tasks.find(params[:id])
