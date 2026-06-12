@@ -6,11 +6,18 @@ class TaskSerializer
       title: task.title,
       description: task.description,
       state: task.state,
-      starts_on: task.starts_on,
+      recurrence: {
+        type: task.recurrence_type,
+        interval: task.recurrence_interval,
+        monthly_day: task.monthly_day,
+        starts_on: task.starts_on,
+        ends_on: task.ends_on,
+        dates: task.recurrence_dates.map(&:date).sort
+      },
       lock_version: task.lock_version,
+      tags: task.tags.order(:name).map { |tag| TagSerializer.call(tag) },
       created_at: task.created_at,
-      updated_at: task.updated_at,
-      tags: task.tags.order(:name).map { |tag| TagSerializer.call(tag) }
+      updated_at: task.updated_at
     }
   end
 end
