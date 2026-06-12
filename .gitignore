@@ -1,0 +1,12 @@
+/.bundle
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+/storage/*
+/public/assets
+.env
+.env.*
+/coverage
+*.swp
+.DS_Store
