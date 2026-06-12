@@ -9,7 +9,11 @@ module Api
         tasks = tasks.joins(:task_tags).where(task_tags: { tag_id: params[:tag_id] }).distinct if params[:tag_id].present?
 
         occurrences = Occurrences::Query.call(tasks, from: from, to: to)
-        occurrences = occurrences.select { |o| o.status == params[:status] } if params[:status].present?
+        if params[:status].present?
+          occurrences = occurrences.select { |o| o.status == params[:status] }
+        elsif !ActiveModel::Type::Boolean.new.cast(params[:include_cancelled])
+          occurrences = occurrences.reject { |o| o.status == "cancelled" }
+        end
 
         render json: occurrences.map { |o| OccurrenceSerializer.call(o) }
       end
