@@ -7,6 +7,7 @@ module Api
       rescue_from ActiveRecord::RecordInvalid, with: :unprocessable
       rescue_from ActionController::ParameterMissing, with: :bad_request
       rescue_from ArgumentError, with: :bad_request
+      rescue_from ActiveRecord::StaleObjectError, with: :conflict
 
       private
 
@@ -17,6 +18,11 @@ module Api
       def unprocessable(error)
         render json: { errors: error.record.errors.full_messages },
                status: :unprocessable_entity
+      end
+
+      def conflict(_error)
+        render json: { error: "Conflict: the record was modified by another request" },
+               status: :conflict
       end
 
       def bad_request(error)
