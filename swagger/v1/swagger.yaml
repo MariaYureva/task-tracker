@@ -1,0 +1,271 @@
+openapi: 3.0.1
+info:
+  title: Task Tracker API
+  version: v1
+  description: >
+    API трекера рабочих задач для МИС. Вхождения повторяющихся задач виртуальны:
+    хранится только правило серии, в БД попадает строка-исключение лишь для дня,
+    отклонившегося от правила (смена статуса, перенос, отмена, переопределение).
+servers:
+  - url: http://localhost:3000
+components:
+  parameters:
+    UserId:
+      name: X-User-Id
+      in: header
+      required: true
+      schema: { type: integer }
+      description: Идентификатор текущего пользователя (упрощённая авторизация).
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+    Errors:
+      type: object
+      properties:
+        errors:
+          type: array
+          items: { type: string }
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [doctor, admin] }
+    Tag:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        system: { type: boolean }
+    Recurrence:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [once, daily, monthly, specific_dates, even_days, odd_days]
+        interval: { type: integer, description: "Шаг: дней (daily) или месяцев (monthly)" }
+        monthly_day: { type: integer, nullable: true, minimum: 1, maximum: 31 }
+        starts_on: { type: string, format: date }
+        ends_on: { type: string, format: date, nullable: true }
+        dates:
+          type: array
+          items: { type: string, format: date }
+    Task:
+      type: object
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        state: { type: string, enum: [active, archived] }
+        recurrence: { $ref: '#/components/schemas/Recurrence' }
+        lock_version: { type: integer }
+        tags:
+          type: array
+          items: { $ref: '#/components/schemas/Tag' }
+    TaskInput:
+      type: object
+      required: [title, starts_on]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        state: { type: string, enum: [active, archived] }
+        starts_on: { type: string, format: date }
+        ends_on: { type: string, format: date }
+        recurrence_type:
+          type: string
+          enum: [once, daily, monthly, specific_dates, even_days, odd_days]
+        recurrence_interval: { type: integer, minimum: 1 }
+        monthly_day: { type: integer, minimum: 1, maximum: 31 }
+        dates:
+          type: array
+          items: { type: string, format: date }
+        lock_version: { type: integer }
+    Occurrence:
+      type: object
+      properties:
+        id: { type: string, description: "Композитный ключ task_id:original_date" }
+        task_id: { type: integer }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        date: { type: string, format: date, description: "Фактическая дата (с учётом переноса)" }
+        original_date: { type: string, format: date, description: "Дата по правилу (стабильный ключ)" }
+        status: { type: string, enum: [pending, in_progress, completed, cancelled] }
+        exception: { type: boolean }
+        recurrence_type: { type: string }
+        tags:
+          type: array
+          items: { $ref: '#/components/schemas/Tag' }
+paths:
+  /api/v1/users:
+    get:
+      summary: Список пользователей
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Создать пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user: { $ref: '#/components/schemas/User' }
+      responses:
+        '201': { description: Created }
+        '422': { description: Unprocessable, content: { application/json: { schema: { $ref: '#/components/schemas/Errors' } } } }
+  /api/v1/users/{id}:
+    get:
+      summary: Пользователь
+      parameters:
+        - $ref: '#/components/parameters/UserId'
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+        '401': { description: Unauthorized }
+  /api/v1/tags:
+    get:
+      summary: Список тегов
+      parameters: [ { $ref: '#/components/parameters/UserId' } ]
+      responses: { '200': { description: OK } }
+    post:
+      summary: Создать пользовательский тег
+      parameters: [ { $ref: '#/components/parameters/UserId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tag: { type: object, properties: { name: { type: string } } }
+      responses: { '201': { description: Created } }
+  /api/v1/tags/{id}:
+    patch:
+      summary: Переименовать тег (системные защищены)
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+        '403': { description: "Системный тег нельзя менять" }
+    delete:
+      summary: Удалить тег (системные защищены)
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '204': { description: No Content }
+        '403': { description: "Системный тег нельзя удалить" }
+  /api/v1/tasks:
+    get:
+      summary: Список серий задач пользователя
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { name: state, in: query, schema: { type: string, enum: [active, archived] } }
+        - { name: starts_from, in: query, schema: { type: string, format: date } }
+        - { name: starts_to, in: query, schema: { type: string, format: date } }
+        - { name: recurrence_type, in: query, schema: { type: string } }
+      responses: { '200': { description: OK } }
+    post:
+      summary: Создать задачу/серию
+      parameters: [ { $ref: '#/components/parameters/UserId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                task: { $ref: '#/components/schemas/TaskInput' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Task' } } } }
+        '422': { description: Unprocessable }
+  /api/v1/tasks/{id}:
+    get:
+      summary: Серия
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses: { '200': { description: OK }, '404': { description: Not Found } }
+    patch:
+      summary: Изменить серию (scope all / only_this / this_and_future)
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: scope, in: query, schema: { type: string, enum: [all, only_this, this_and_future] } }
+        - { name: date, in: query, schema: { type: string, format: date }, description: "Требуется для only_this и this_and_future" }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                task: { $ref: '#/components/schemas/TaskInput' }
+      responses:
+        '200': { description: "Изменена (all/only_this)" }
+        '201': { description: "Создана новая серия (this_and_future)" }
+        '409': { description: "Конфликт оптимистичной блокировки" }
+    delete:
+      summary: Архивировать (по умолчанию) или удалить (?hard=true)
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: hard, in: query, schema: { type: boolean } }
+      responses:
+        '200': { description: "Архивирована" }
+        '204': { description: "Удалена (hard)" }
+  /api/v1/tasks/{task_id}/tags:
+    post:
+      summary: Привязать тег к задаче
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { name: task_id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { tag_id: { type: integer } } }
+      responses: { '201': { description: Created } }
+  /api/v1/tasks/{task_id}/tags/{id}:
+    delete:
+      summary: Отвязать тег от задачи
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { name: task_id, in: path, required: true, schema: { type: integer } }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses: { '200': { description: OK } }
+  /api/v1/tasks/{task_id}/occurrences/{original_date}:
+    patch:
+      summary: Изменить один экземпляр (статус / перенос / переопределение)
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { name: task_id, in: path, required: true, schema: { type: integer } }
+        - { name: original_date, in: path, required: true, schema: { type: string, format: date } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                occurrence:
+                  type: object
+                  properties:
+                    status: { type: string, enum: [pending, in_progress, completed, cancelled] }
+                    scheduled_date: { type: string, format: date }
+                    title: { type: string }
+                    description: { type: string }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Occurrence' } } } }
+        '400': { description: "Дата не является вхождением серии" }
+        '409': { description: "На целевую дату уже есть вхождение" }
+        '422': { description: "Недопустимый статус" }
+    delete:
+      summary: Вернуть экземпляр под правило (удалить исключение)
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+        - { name: task_id, in: path, required: true, schema: { type: integer } }
+        - { name: original_date, in: path, required: true, schema: {
