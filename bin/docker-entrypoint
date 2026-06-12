@@ -1,0 +1,11 @@
+#!/bin/bash
+set -e
+
+until pg_isready -h "${DATABASE_HOST:-db}" -p "${DATABASE_PORT:-5432}" -q; do
+  echo "Waiting for PostgreSQL at ${DATABASE_HOST:-db}..."
+  sleep 1
+done
+
+bundle exec rails db:prepare
+
+exec "$@"
