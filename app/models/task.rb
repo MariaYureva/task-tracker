@@ -12,6 +12,7 @@ class Task < ApplicationRecord
   has_many :task_tags, dependent: :destroy
   has_many :tags, through: :task_tags
   has_many :recurrence_dates, dependent: :destroy
+  has_many :task_exceptions, dependent: :destroy
 
   validates :title, presence: true
   validates :starts_on, presence: true
