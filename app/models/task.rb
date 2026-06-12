@@ -4,6 +4,8 @@ class Task < ApplicationRecord
   enum :state, STATES, default: "active"
 
   belongs_to :user
+  has_many :task_tags, dependent: :destroy
+  has_many :tags, through: :task_tags
 
   validates :title, presence: true
   validates :starts_on, presence: true
