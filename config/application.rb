@@ -13,6 +13,8 @@ module TaskTracker
 
     config.api_only = true
 
+    config.middleware.delete ActionDispatch::HostAuthorization
+
     config.time_zone = "UTC"
 
     config.autoload_paths << Rails.root.join("app/services")

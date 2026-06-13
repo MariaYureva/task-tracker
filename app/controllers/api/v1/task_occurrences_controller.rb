@@ -51,8 +51,9 @@ module Api
       end
 
       def collision?(moving_original, target)
-        Occurrences::Builder.call(@task, from: target, to: target)
-                            .any? { |o| o.original_date != moving_original }
+        @task.task_exceptions
+             .where.not(original_date: moving_original)
+             .any? { |e| e.effective_scheduled_date == target }
       end
 
       def render_conflict(target)

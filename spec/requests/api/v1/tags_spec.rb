@@ -17,8 +17,7 @@ RSpec.describe "Api::V1::Tags", type: :request do
   end
 
   context "system tag protection" do
-    let!(:tag) { create(:tag, :system, name: "операции") }
-
+    let!(:tag) { create(:tag, :system, name: "системный_тест_тег") }
     it "forbids update" do
       patch "/api/v1/tags/#{tag.id}", params: { tag: { name: "x" } }.to_json, headers: auth_headers(user)
       expect(response).to have_http_status(:forbidden)

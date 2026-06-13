@@ -59,8 +59,11 @@ module Tasks
         new_task = @task.user.tasks.new(carry_over_attributes)
         new_task.assign_attributes(@attributes.except(:starts_on))
         new_task.starts_on = @date
-        copy_tags(new_task)
+        @task.recurrence_dates.where("date >= ?", @date).each do |rd|
+          new_task.recurrence_dates.build(date: rd.date)
+        end
         new_task.save!
+        new_task.tags = @task.tags.to_a
 
         @task.update!(ends_on: @date - 1)
 
@@ -73,13 +76,6 @@ module Tasks
         :title, :description, :state, :recurrence_type,
         :recurrence_interval, :monthly_day, :ends_on
       ).symbolize_keys.merge(starts_on: @date)
-    end
-
-    def copy_tags(new_task)
-      @task.tags.each { |tag| new_task.tags << tag }
-      @task.recurrence_dates.where("date >= ?", @date).each do |rd|
-        new_task.recurrence_dates.build(date: rd.date)
-      end
     end
 
     def ensure_valid_occurrence!(date)

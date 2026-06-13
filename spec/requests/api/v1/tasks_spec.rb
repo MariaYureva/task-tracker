@@ -60,7 +60,7 @@ RSpec.describe "Api::V1::Tasks", type: :request do
 
     it "hard-deletes with ?hard=true" do
       task = create(:task, user: user)
-      delete "/api/v1/tasks/#{task.id}", params: { hard: true }, headers: auth_headers(user)
+      delete "/api/v1/tasks/#{task.id}?hard=true", headers: auth_headers(user)
       expect(response).to have_http_status(:no_content)
       expect(Task.exists?(task.id)).to be(false)
     end
